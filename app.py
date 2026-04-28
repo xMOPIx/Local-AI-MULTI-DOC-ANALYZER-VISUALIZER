@@ -105,7 +105,7 @@ if query := st.chat_input("¿Qué quieres saber?"):
             1. RIGOR: Usa solo la info de los PDFs.
             2. ESTRUCTURA: Diferencia bien de qué archivo sacas cada dato.
             3. VISUALIZACIÓN: Genera código Python (matplotlib) si hay datos numéricos.
-            4. ESTILO: Profesional, directo y conciso.
+            4. ESTILO: Profesional, directo.
             """
             
             response = llm.invoke(prompt)
