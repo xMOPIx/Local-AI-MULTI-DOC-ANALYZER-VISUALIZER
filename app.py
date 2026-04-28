@@ -136,3 +136,5 @@ if query := st.chat_input("¿Qué quieres saber?"):
             st.session_state.messages.append({"role": "assistant", "content": response})
     else:
         st.warning("Primero sube un PDF.")
+
+# Prueba 
