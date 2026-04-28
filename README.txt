@@ -1,19 +1,17 @@
 ============================================================
-           TELECOBRAIN: MULTI-DOC ANALYZER & VISUALIZER
+           Local AI: MULTI-DOC ANALYZER & VISUALIZER
 ============================================================
 
 1. DESCRIPCIÓN DEL PROYECTO
 ---------------------------
-TelecoBrain es un asistente inteligente basado en Inteligencia Artificial 
-diseñado específicamente para el ámbito de la ingeniería de telecomunicaciones. 
-Permite al usuario interactuar con múltiples archivos PDF técnicos (guías 
-docentes, apuntes, hojas de datos) de forma simultánea.
+Es un asistente inteligente basado en Inteligencia Artificial 
+Permite al usuario interactuar con múltiples archivos PDF técnicos a la vez.
 
 La aplicación utiliza una arquitectura RAG (Retrieval-Augmented Generation) 
 para extraer información precisa y es capaz de generar visualizaciones 
 de datos automáticas mediante Python.
 
-2. STACK TECNOLÓGICO
+2. TECNOLOGIAS
 --------------------
 - Lenguaje: Python 3.12+
 - Framework IA: LangChain
@@ -28,7 +26,7 @@ de datos automáticas mediante Python.
 - Sistema RAG: Recuperación de información en tiempo real sin necesidad 
   de entrenamiento (Fine-Tuning).
 - Base de Datos Vectorial: Uso de DocArray en memoria RAM para búsquedas 
-  semánticas ultra rápidas.
+  semánticas rápidas.
 - Segmentación Inteligente: División de documentos en trozos (chunks) de 
   800 caracteres con 150 de solapamiento (overlap) para mantener el contexto.
 - Visualización de Datos: Generación de gráficas proactiva cuando la IA 
@@ -46,15 +44,13 @@ de datos automáticas mediante Python.
 
 5. EJECUCIÓN
 ------------
-Para arrancar la aplicación, ejecuta el siguiente comando en la terminal:
 streamlit run app.py
 
 6. NOTAS SOBRE EL MODELO
 ------------------------
-Este proyecto NO utiliza Fine-Tuning. Utiliza una arquitectura RAG, lo que 
-permite que el modelo Llama 3.1 actúe como un "examinador a libro abierto", 
-consultando la base de datos vectorial generada a partir de tus archivos PDF 
-antes de generar cada respuesta.
+Utiliza una arquitectura RAG para que Llama 3.1 actúe como un "examinador 
+a libro abierto", consultando la base de datos vectorial de tus archivos.
 
-============================================================
-Desarrollado como proyecto de Ingeniería de Telecomunicaciones
+No emplea Fine-tuning porque el RAG permite procesar nuevos documentos al 
+instante sin re-entrenar el modelo, garantiza precisión técnica al evitar 
+alucinaciones y opera de forma ligera y privada en hardware local.
