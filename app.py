@@ -137,4 +137,3 @@ if query := st.chat_input("¿Qué quieres saber?"):
     else:
         st.warning("Primero sube un PDF.")
 
-# Prueba 
