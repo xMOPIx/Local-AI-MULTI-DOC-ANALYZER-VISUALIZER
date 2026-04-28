@@ -24,7 +24,7 @@ de datos automáticas mediante Python.
 3. CARACTERÍSTICAS TÉCNICAS
 ---------------------------
 - Sistema RAG: Recuperación de información en tiempo real sin necesidad 
-  de entrenamiento (Fine-Tuning).
+  de entrenamiento (Fine-Tuning)
 - Base de Datos Vectorial: Uso de DocArray en memoria RAM para búsquedas 
   semánticas rápidas.
 - Segmentación Inteligente: División de documentos en trozos (chunks) de 
