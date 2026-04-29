@@ -1,0 +1,12 @@
+services:
+  asistente-ia:
+    build: .
+    container_name: multi-doc-analyzer
+    ports:
+      - "8501:8501"
+    # Esto crea el mapa de red para encontrar Ollama en tu Windows
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - STREAMLIT_SERVER_PORT=8501
+      - DOCKER_MODE=true

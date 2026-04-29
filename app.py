@@ -7,6 +7,9 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Si la variable 'DOCKER_MODE' existe, usa el link de Docker; si no, usa localhost
+base_url = "http://host.docker.internal:11434" if os.getenv("DOCKER_MODE") else "http://localhost:11434"
+
 # Configuración UI
 st.set_page_config(page_title="TelecoBrain", layout="wide")
 
@@ -16,8 +19,15 @@ if "messages" not in st.session_state:
 
 @st.cache_resource
 def get_engines():
-    embeddings = OllamaEmbeddings(model="nomic-embed-text")
-    llm = OllamaLLM(model="llama3.1", temperature=0)
+    embeddings = OllamaEmbeddings(
+        model="nomic-embed-text",
+        base_url=base_url
+        )
+    llm = OllamaLLM(
+        model="llama3.1", 
+        temperature=0,
+        base_url=base_url
+        )
     return embeddings, llm
 
 motores = get_engines()
