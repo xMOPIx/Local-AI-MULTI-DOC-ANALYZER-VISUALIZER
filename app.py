@@ -1,149 +1,162 @@
+import os
 import streamlit as st
-from langchain_ollama import OllamaLLM, OllamaEmbeddings
-from langchain_community.vectorstores import DocArrayInMemorySearch
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-import os 
+import requests
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Si la variable 'DOCKER_MODE' existe, usa el link de Docker; si no, usa localhost
-base_url = "http://host.docker.internal:11434" if os.getenv("DOCKER_MODE") else "http://localhost:11434"
+st.set_page_config(page_title="TelecoBrain Pro", layout="wide")
+API_URL = os.getenv("API_URL", "http://asistente-ia:8000")
 
-# Configuración UI
-st.set_page_config(page_title="TelecoBrain", layout="wide")
+# --- SIDEBAR (Aquí está lo que te falta) ---
+with st.sidebar:
+    st.header("⚙️ Configuración")
+    
+    # Inicializar contador para resetear file_uploader
+    if "reset_counter" not in st.session_state:
+        st.session_state.reset_counter = 0
+    
+    uploaded_files = st.file_uploader(
+        "Sube tus PDFs", 
+        type="pdf", 
+        accept_multiple_files=True,
+        key=f"file_uploader_{st.session_state.reset_counter}"
+    )
+    
+    if "use_ragas" not in st.session_state:
+        st.session_state.use_ragas = False
+    if "use_reasoning" not in st.session_state:
+        st.session_state.use_reasoning = False
+    if "indexed_files" not in st.session_state:
+        st.session_state.indexed_files = set()
 
-# Inicialización el historial
+    use_ragas = st.checkbox(
+        "Evaluación RAGAS",
+        value=st.session_state.use_ragas,
+        help="Activa la evaluación de fidelidad y relevancia. Si está desactivado, la respuesta será más rápida.",
+        key="use_ragas"
+    )
+
+    use_reasoning = st.checkbox(
+        "Razonamiento interno (CoT)",
+        value=st.session_state.use_reasoning,
+        help="Activa el razonamiento interno en el prompt. Si está desactivado, la IA responderá de forma más directa.",
+        key="use_reasoning"
+    )
+
+    st.caption("Los PDFs se indexan automáticamente al subirlos.")
+
+    # --- Lógica de Sincronización Automática ---
+    current_files_names = {f.name for f in uploaded_files} if uploaded_files else set()
+    
+    # 1. Detectar archivos ELIMINADOS del uploader
+    files_to_remove = st.session_state.indexed_files - current_files_names
+    if files_to_remove:
+        for file_name in files_to_remove:
+            try:
+                requests.delete(f"{API_URL}/delete/{file_name}")
+                st.session_state.indexed_files.remove(file_name)
+                st.toast(f"🗑️ Eliminado: {file_name}")
+            except Exception as e:
+                st.error(f"Error al eliminar {file_name}: {e}")
+
+    # 2. Detectar archivos NUEVOS en el uploader
+    if uploaded_files:
+        new_files = [f for f in uploaded_files if f.name not in st.session_state.indexed_files]
+        if new_files:
+            with st.spinner(f"Indexando {len(new_files)} archivo(s)..."):
+                for uploaded_file in new_files:
+                    try:
+                        files_payload = {"file": (uploaded_file.name, uploaded_file.getvalue())}
+                        resp = requests.post(f"{API_URL}/ingest", files=files_payload, timeout=120)
+                        resp.raise_for_status()
+                        st.session_state.indexed_files.add(uploaded_file.name)
+                        st.toast(f"✅ Indexado: {uploaded_file.name}")
+                    except Exception as e:
+                        st.warning(f"⚠️ {uploaded_file.name}: {str(e)[:50]}")
+    
+    # Botón de Limpieza Total (mantiene su utilidad para borrar historial)
+    if st.button("🗑️ Limpiar Todo", use_container_width=True):
+        requests.post(f"{API_URL}/reset")
+        st.session_state.indexed_files.clear()
+        st.session_state.messages = []
+        st.session_state.reset_counter += 1
+        st.success("✅ Todo limpiado")
+        st.rerun()
+
+    # Mostrar archivos indexados actualmente
+    if st.session_state.indexed_files:
+        st.divider()
+        st.subheader(f"📄 Archivos Activos ({len(st.session_state.indexed_files)})")
+        for idx_file in sorted(st.session_state.indexed_files):
+            st.caption(f"✓ {idx_file}")
+    else:
+        # Asegurar que si el uploader está vacío, el estado también
+        if not uploaded_files and st.session_state.indexed_files:
+            requests.post(f"{API_URL}/reset")
+            st.session_state.indexed_files.clear()
+
+# --- CUERPO PRINCIPAL ---
+st.title("🚀 TelecoBrain Professional")
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-@st.cache_resource
-def get_engines():
-    embeddings = OllamaEmbeddings(
-        model="nomic-embed-text",
-        base_url=base_url
-        )
-    llm = OllamaLLM(
-        model="llama3.1", 
-        temperature=0,
-        base_url=base_url
-        )
-    return embeddings, llm
+# Mostrar historial
+for m in st.session_state.messages:
+    with st.chat_message(m["role"]):
+        st.markdown(m["content"])
 
-motores = get_engines()
-embeddings_engine = motores[0]
-llm = motores[1]
-
-# Interfaz Lateral e ingesta
-with st.sidebar:
-    st.header("⚙️ Configuración")
-    uploaded_files = st.file_uploader("Sube tus PDFs", type="pdf", accept_multiple_files=True)
-
-    if st.button("🗑️ Limpiar Todo"):
-        st.session_state.clear()
-        st.rerun()  # CORRECTO: Era st.rerun(), no return()
+# Chat Input
+if query := st.chat_input("Pregunta algo sobre los documentos..."):
+    st.session_state.messages.append({"role": "user", "content": query})
+    with st.chat_message("user"):
+        st.markdown(query)
     
-# Ingesta
-if uploaded_files:
-    if "vector_db" not in st.session_state:   
-        with st.spinner("Indexando..."): # CORRECTO: Era spinner con dos 'n'
-            all_docs = []
-            file_identities = {} 
+    # Llamada al backend
+    try:
+        payload = {
+            "query": query,
+            "use_ragas": st.session_state.use_ragas,
+            "use_reasoning": st.session_state.use_reasoning
+        }
+        response = requests.post(f"{API_URL}/ask", json=payload, timeout=120)
+        response.raise_for_status()
+        res = response.json()
+        full_text = res["answer"]
+        
+        with st.chat_message("assistant"):
+            # 1. CoT (Pensamiento)
+            if "<pensamiento>" in full_text:
+                parts = full_text.split("</pensamiento>")
+                thought = parts[0].replace("<pensamiento>", "").strip()
+                answer = parts[1].replace("<respuesta>", "").replace("</respuesta>", "").strip()
+                with st.expander("🧠 Razonamiento interno"):
+                    st.write(thought)
+            else:
+                answer = full_text
 
-            for uploaded_file in uploaded_files:
-                temp_path = f"temp_{uploaded_file.name}"
-                with open(temp_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
+            # 2. Respuesta Final
+            st.markdown(answer)
 
-                loader = PyPDFLoader(temp_path)
-                docs = loader.load()
+            # 3. Métricas RAGAS en Sidebar dinámico
+            if "evaluation" in res:
+                evals = res["evaluation"]
+                st.sidebar.divider()
+                st.sidebar.subheader("📊 Calidad de Respuesta")
+                st.sidebar.metric("Fidelidad", f"{evals['fidelidad']:.2f}")
+                st.sidebar.metric("Relevancia", f"{evals['relevancia']:.2f}")
 
-                file_identities[uploaded_file.name] = docs[0].page_content[:1500]    
-
-                for d in docs:
-                    d.metadata["source"] = uploaded_file.name
-
-                all_docs.extend(docs)
-                os.remove(temp_path) 
-
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=150)
-            splits = text_splitter.split_documents(all_docs)
-
-            st.session_state.vector_db = DocArrayInMemorySearch.from_documents(splits, embeddings_engine)
-            st.session_state.file_identities = file_identities
-
-# Chat e Interfaz Principal
-st.title("🚀 TelecoBrain: Multi-Doc Analyzer")
-
-chat_container = st.container()
-
-with chat_container:
-    for m in st.session_state.messages:
-        # CORRECTO: Era st.chat_message (singular), no chat_messages
-        with st.chat_message(m["role"]):
-            st.markdown(m["content"])
-
-# Entrada usuario
-if query := st.chat_input("¿Qué quieres saber?"):
-    st.session_state.messages.append({"role": "human", "content": query})
-    with chat_container:
-        with st.chat_message("human"):
-            st.markdown(query)
-
-    if "vector_db" in st.session_state:
-        with st.chat_message("ai"):
-            docs = st.session_state.vector_db.similarity_search(query, k=10) 
-            
-            # CORRECTO: He definido las variables que faltaban para el prompt
-            context_text = "\n".join([f"[{d.metadata['source']}]: {d.page_content}" for d in docs])
-            
-            identities_str = ""
-            for name, intro in st.session_state.file_identities.items():
-                identities_str += f"\n[DOC: {name}]\n{intro[:300]}...\n"
-
-            prompt = f"""Eres un asistente técnico avanzado. Tienes que analizar varios archivos PDF.
-            
-            IDENTIDAD DE LOS ARCHIVOS CARGADOS:
-            {identities_str}
-            
-            DETALLES TÉCNICOS ENCONTRADOS:
-            {context_text}
-            
-            PREGUNTA DEL USUARIO: {query}
-            
-            INSTRUCCIONES DE RESPUESTA:
-            1. RIGOR: Usa solo la info de los PDFs.
-            2. ESTRUCTURA: Diferencia bien de qué archivo sacas cada dato.
-            3. VISUALIZACIÓN: Genera código Python (matplotlib) si hay datos numéricos.
-            4. ESTILO: Profesional, directo.
-            """
-            
-            response = llm.invoke(prompt)
-            st.markdown(response)
-
-            # Gráficas
-            if "```python" in response:
+            # 4. Gráficas
+            if "```python" in answer:
                 try:
-                    # Extraemos el código limpiando espacios extra
-                    code = response.split("```python")[1].split("```")[0].strip()
-                    
-                    with st.expander("📊 Visualización Técnica"):
-                        # Creamos la figura explícitamente
-                        fig, ax = plt.subplots(figsize=(10, 5))
-                        
-                        # Definimos el entorno de ejecución
-                        # Incluimos fig y ax para que la IA pueda usarlos si quiere
-                        local_vars = {"plt": plt, "np": np, "ax": ax, "fig": fig}
-                        
-                        exec(code, {}, local_vars)
-                        
-                        # Forzamos que se dibuje la figura actual
-                        st.pyplot(plt.gcf())
-                        plt.close(fig)
-                except Exception as e:
-                    st.error(f"Error en el código de la gráfica: {e}")
-            
-            st.session_state.messages.append({"role": "assistant", "content": response})
-    else:
-        st.warning("Primero sube un PDF.")
+                    code = answer.split("```python")[1].split("```")[0].strip()
+                    with st.expander("📊 Visualización"):
+                        fig, ax = plt.subplots()
+                        exec(code, {}, {"plt": plt, "np": np, "ax": ax, "fig": fig})
+                        st.pyplot(fig)
+                except:
+                    pass
 
+        st.session_state.messages.append({"role": "assistant", "content": full_text})
+    except Exception as e:
+        st.error(f"Error de conexión con el backend: {e}")
