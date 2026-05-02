@@ -25,8 +25,14 @@ from datasets import Dataset
 # ==========================================
 # 2. MODELOS DE DATOS (Pydantic)
 # ==========================================
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
 class ChatQuery(BaseModel):
     query: str
+    history: list[ChatMessage] = []
+    active_files: list[str] = []
     use_ragas: bool = False
     use_reasoning: bool = False
 
@@ -144,12 +150,31 @@ async def ask_ai(chat_query: ChatQuery):
     3. Generación de respuesta con LLM.
     4. Opcional: Evaluación de fidelidad y relevancia con Ragas.
     """
-    # 1. Recuperación de Documentos (MMR garantiza diversidad)
-    # k=10 para asegurar que cogemos suficientes fragmentos tras añadir el nombre del archivo
-    if hasattr(vector_db, "max_marginal_relevance_search"):
-        docs = vector_db.max_marginal_relevance_search(chat_query.query, k=10, fetch_k=35)
-    else:
-        docs = vector_db.similarity_search(chat_query.query, k=10)
+    # 1. Recuperación de Documentos
+    docs = []
+    
+    # Si tenemos archivos activos y no son demasiados (para no reventar el tiempo/VRAM),
+    # intentamos sacar fragmentos equitativamente de CADA archivo.
+    if chat_query.active_files and len(chat_query.active_files) <= 5:
+        k_per_file = max(2, 10 // len(chat_query.active_files))
+        for file_name in chat_query.active_files:
+            try:
+                # Filtrar por metadato "source" para obligar a leer cada archivo
+                file_docs = vector_db.similarity_search(
+                    chat_query.query, 
+                    k=k_per_file, 
+                    filter={"source": file_name}
+                )
+                docs.extend(file_docs)
+            except Exception as e:
+                print(f"Error recuperando de {file_name}: {e}")
+                
+    # Fallback: Si no hay archivos o la búsqueda por filtro falló, usamos búsqueda general
+    if not docs:
+        if hasattr(vector_db, "max_marginal_relevance_search"):
+            docs = vector_db.max_marginal_relevance_search(chat_query.query, k=10, fetch_k=35)
+        else:
+            docs = vector_db.similarity_search(chat_query.query, k=10)
     
     # Incluimos el nombre del archivo fuente en el contexto para que el LLM pueda diferenciarlos
     context_list = [f"Fuente ({d.metadata.get('source', 'Desconocido')}): {d.page_content}" for d in docs]
@@ -160,31 +185,65 @@ async def ask_ai(chat_query: ChatQuery):
     if len(context_text) > max_context_chars:
         context_text = context_text[:max_context_chars] + "..."
 
-    # 2. Generación de respuesta
+    # 2. Construcción del historial para el prompt
+    chat_history_text = ""
+    for msg in chat_query.history[-5:]: # Tomamos los últimos 5 mensajes para no saturar
+        role_name = "Usuario" if msg.role == "user" else "Asistente"
+        chat_history_text += f"{role_name}: {msg.content}\n"
+        
+    archivos_activos_str = ", ".join(chat_query.active_files) if chat_query.active_files else "Ninguno"
+
+    # 3. Generación de respuesta
     if chat_query.use_reasoning:
         prompt = f"""
-        Eres un asistente técnico avanzado.
-        CONTEXTO EXTRAÍDO DE LOS PDF:
+        Eres un asistente técnico avanzado con capacidad de análisis de datos.
+        
+        ARCHIVOS ACTUALMENTE INDEXADOS (que el usuario ha subido):
+        {archivos_activos_str}
+        
+        HISTORIAL DE CONVERSACIÓN (Contexto previo):
+        {chat_history_text}
+
+        CONTEXTO EXTRAÍDO DE LOS DOCUMENTOS:
         {context_text}
 
-        PREGUNTA DEL USUARIO: {chat_query.query}
+        PREGUNTA ACTUAL DEL USUARIO: {chat_query.query}
 
-        INSTRUCCIONES:
-        1. <pensamiento>: Analiza los datos del contexto y planea la respuesta.
-        2. <respuesta>: Responde con rigor. Si hay datos para comparar, genera código Python (matplotlib).
+        INSTRUCCIONES CRÍTICAS:
+        1. <pensamiento>: Analiza el historial y el contexto para planear la respuesta.
+        2. <respuesta>: Responde con rigor. 
+        3. CONDICIÓN PARA GRÁFICAS:
+           - Si el usuario NO pide gráfica: responde solo con texto. No des excusas ni menciones que puedes graficar.
+           - Si el usuario PIDE gráfica (usa palabras como "grafica", "dibuja", etc.): DEBES generar un bloque ```python con código matplotlib.
+        4. REGLAS DE CÓDIGO PYTHON (Solo si generas código):
+           - Usa `fig, ax = plt.subplots()`.
+           - Extrae los datos del contexto y escríbelos a mano en variables. No leas archivos del disco.
         
         Formato: <pensamiento>...</pensamiento><respuesta>...</respuesta>
         """
     else:
         prompt = f"""
         Eres un asistente técnico avanzado.
-        CONTEXTO EXTRAÍDO DE LOS PDF:
+        
+        ARCHIVOS ACTUALMENTE INDEXADOS (que el usuario ha subido):
+        {archivos_activos_str}
+        
+        HISTORIAL DE CONVERSACIÓN:
+        {chat_history_text}
+
+        CONTEXTO EXTRAÍDO DE LOS DOCUMENTOS:
         {context_text}
 
-        PREGUNTA DEL USUARIO: {chat_query.query}
+        PREGUNTA ACTUAL: {chat_query.query}
 
         INSTRUCCIONES:
-        Responde de forma clara, directa y útil. No es necesario mostrar el razonamiento interno.
+        1. Responde de forma clara y directa usando el contexto y el historial.
+        2. CONDICIÓN PARA GRÁFICAS:
+           - Si el usuario NO pide gráfica: responde solo con texto. No des excusas ni menciones que puedes graficar.
+           - Si el usuario PIDE gráfica (usa palabras como "grafica", "dibuja", etc.): DEBES generar un bloque ```python con código matplotlib.
+        3. REGLAS DE CÓDIGO PYTHON (Solo si generas código):
+           - Usa `fig, ax = plt.subplots()`.
+           - Extrae los datos del contexto y escríbelos a mano en variables. No leas archivos del disco.
         """
     response = llm.invoke(prompt)
 

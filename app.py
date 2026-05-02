@@ -4,6 +4,7 @@ Este módulo gestiona la interfaz de usuario, la subida de documentos,
 la sincronización con el backend (FastAPI) y la visualización de resultados.
 """
 import os
+import re
 import streamlit as st
 import requests
 import matplotlib.pyplot as plt
@@ -12,7 +13,7 @@ import numpy as np
 # ==========================================
 # CONFIGURACIÓN GLOBAL
 # ==========================================
-st.set_page_config(page_title="Local AI="wide")
+st.set_page_config(page_title="Local AI", layout="wide")
 API_URL = os.getenv("API_URL", "http://asistente-ia:8000")
 
 # ==========================================
@@ -26,7 +27,7 @@ with st.sidebar:
         st.session_state.reset_counter = 0
     
     uploaded_files = st.file_uploader(
-        "Sube tus documentos (PDF, DOCX, CSV, TXT, etc.)", 
+        "Sube tus documentos (PDF, DOCX, CSV, TXT, MD)", 
         type=["pdf", "docx", "csv", "txt", "md"], 
         accept_multiple_files=True,
         key=f"file_uploader_{st.session_state.reset_counter}"
@@ -129,6 +130,8 @@ if query := st.chat_input("Pregunta algo sobre los documentos..."):
     try:
         payload = {
             "query": query,
+            "history": st.session_state.messages,
+            "active_files": list(st.session_state.indexed_files),
             "use_ragas": st.session_state.use_ragas,
             "use_reasoning": st.session_state.use_reasoning
         }
@@ -162,13 +165,23 @@ if query := st.chat_input("Pregunta algo sobre los documentos..."):
             # 4. Gráficas
             if "```python" in answer:
                 try:
-                    code = answer.split("```python")[1].split("```")[0].strip()
-                    with st.expander("📊 Visualización"):
-                        fig, ax = plt.subplots()
-                        exec(code, {}, {"plt": plt, "np": np, "ax": ax, "fig": fig})
-                        st.pyplot(fig)
-                except:
-                    pass
+                    python_blocks = re.findall(r'```python\s+(.*?)\s+```', answer, re.DOTALL)
+                    if python_blocks:
+                        with st.expander("📊 Visualización"):
+                            # Le damos un tamaño por defecto más controlado
+                            fig, ax = plt.subplots(figsize=(7, 4))
+                            local_vars = {"plt": plt, "np": np, "ax": ax, "fig": fig}
+                            
+                            for code in python_blocks:
+                                exec(code, {}, local_vars)
+                        
+                        # Recuperar la figura en caso de que el LLM haya hecho fig, ax = plt.subplots() internamente
+                        final_fig = local_vars.get("fig", fig)
+                        
+                        # Renderizar sin estirar a todo el ancho de la pantalla
+                        st.pyplot(final_fig, use_container_width=False)
+                except Exception as e:
+                    st.error(f"Error al generar gráfica: {e}")
 
         st.session_state.messages.append({"role": "assistant", "content": full_text})
     except Exception as e:
