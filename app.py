@@ -1,5 +1,5 @@
 """
-Frontend de TelecoBrain Pro (Streamlit).
+Frontend de Local AIit).
 Este módulo gestiona la interfaz de usuario, la subida de documentos,
 la sincronización con el backend (FastAPI) y la visualización de resultados.
 """
@@ -12,7 +12,7 @@ import numpy as np
 # ==========================================
 # CONFIGURACIÓN GLOBAL
 # ==========================================
-st.set_page_config(page_title="TelecoBrain Pro", layout="wide")
+st.set_page_config(page_title="Local AI="wide")
 API_URL = os.getenv("API_URL", "http://asistente-ia:8000")
 
 # ==========================================
@@ -106,7 +106,7 @@ with st.sidebar:
 # ==========================================
 # CUERPO PRINCIPAL (CHAT)
 # ==========================================
-st.title("🚀 TelecoBrain Professional")
+st.title("🚀 Local AI")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []

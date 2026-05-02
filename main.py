@@ -1,5 +1,5 @@
 """
-Backend de TelecoBrain Pro (FastAPI).
+Backend de Local AI (FastAPI).
 Gestiona la ingesta de documentos, la base de datos vectorial Chroma, 
 la generación de respuestas usando Ollama (RAG) y la evaluación con Ragas.
 """
@@ -33,7 +33,7 @@ class ChatQuery(BaseModel):
 # ==========================================
 # 3. CONFIGURACIÓN GLOBAL E INICIALIZACIÓN
 # ==========================================
-app = FastAPI(title="TelecoBrain API")
+app = FastAPI(title="Local AI")
 CHROMA_PATH = "db_data"
 base_url = "http://host.docker.internal:11434"
 ENABLE_RAGAS_EVAL = os.getenv("ENABLE_RAGAS_EVAL", "false").lower() in ("1", "true", "yes")
