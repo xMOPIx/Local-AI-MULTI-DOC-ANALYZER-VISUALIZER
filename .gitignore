@@ -1,3 +1,12 @@
+# Entornos virtuales (Crucial para evitar los 34.000 objetos)
+venv/
+.venv/
+env/
+
+# Carpetas de base de datos específicas de tu proyecto
+db_data/
+__pycache__/
+
 # --- RAG & AI Specific ---
 # Ignorar los índices de FAISS (se deben regenerar localmente)
 faiss_index/
