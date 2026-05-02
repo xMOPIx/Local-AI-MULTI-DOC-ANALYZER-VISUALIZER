@@ -9,7 +9,7 @@ Sistema avanzado de **RAG (Retrieval-Augmented Generation)** diseñado para el a
 
 ## 🚀 Descripción del Proyecto
 
-Esta herramienta transforma tus carpetas de documentos (PDF, TXT, etc.) en una base de conocimiento interactiva. Gracias a la integración con **Ollama**, el procesamiento se realiza íntegramente en tu hardware, eliminando la necesidad de enviar datos a la nube o pagar por APIs externas.
+Esta herramienta transforma tus carpetas de documentos (PDF, DOCX, CSV, TXT, MD, etc.) en una base de conocimiento interactiva. Gracias a la integración con **Ollama**, el procesamiento se realiza íntegramente en tu hardware, eliminando la necesidad de enviar datos a la nube o pagar por APIs externas.
 
 ### 🌟 Características Principales
 * **Privacidad Total:** Inferencia local. Tus documentos nunca salen de tu red.
@@ -47,7 +47,7 @@ Sigue estos pasos para poner en marcha el sistema:
 Copia y pega este comando exactamente (asegúrate de no incluir corchetes):
 ```bash
 git clone https://github.com/xMOPIx/Local-AI-MULTI-DOC-ANALYZER-VISUALIZER.git
-
+```
 ### 3. Entrar a la carpeta
 
 cd Local-AI-MULTI-DOC-ANALYZER-VISUALIZER

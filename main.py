@@ -9,9 +9,14 @@ from datasets import Dataset
 # ------------------------
 from langchain_ollama import OllamaLLM, OllamaEmbeddings
 from langchain_chroma import Chroma
-from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, CSVLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import os
+
+class ChatQuery(BaseModel):
+    query: str
+    use_ragas: bool = False
+    use_reasoning: bool = False
 
 app = FastAPI()
 CHROMA_PATH = "db_data"
@@ -22,10 +27,30 @@ embeddings_engine = OllamaEmbeddings(model="nomic-embed-text", base_url=base_url
 llm = OllamaLLM(model="llama3.1", temperature=0, base_url=base_url)
 vector_db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings_engine)
 
-class ChatQuery(BaseModel):
-    query: str
-    use_ragas: bool = False
-    use_reasoning: bool = True
+def load_document(file_path: str, filename: str):
+    """Load document based on file extension."""
+    ext = filename.lower().split('.')[-1]
+    
+    if ext == 'pdf':
+        loader = PyPDFLoader(file_path)
+    elif ext == 'docx':
+        loader = Docx2txtLoader(file_path)
+    elif ext == 'csv':
+        loader = CSVLoader(file_path)
+    elif ext in ['txt', 'md']:
+        loader = TextLoader(file_path)
+    else:
+        # Default to TextLoader for unknown types
+        loader = TextLoader(file_path)
+    
+    docs = loader.load()
+    
+    # Add metadata
+    for d in docs:
+        d.metadata["source"] = filename
+        d.page_content = f"ARCHIVO: {filename}\n{d.page_content}"
+    
+    return docs
 
 @app.post("/reset")
 async def reset_db():
@@ -39,24 +64,23 @@ async def reset_db():
 @app.delete("/delete/{filename}")
 async def delete_file(filename: str):
     # Eliminar fragmentos que pertenezcan al archivo específico
-    vector_db.delete(where={"source": filename})
+    try:
+        result = vector_db.get(where={"source": filename})
+        if result and result.get("ids"):
+            vector_db.delete(ids=result["ids"])
+    except Exception as e:
+        print(f"Error borrando {filename}: {e}")
     return {"status": "success", "message": f"Archivo {filename} eliminado"}
     
 @app.post("/ingest")
-async def ingest_pdf(file: UploadFile = File(...)):
+async def ingest_file(file: UploadFile = File(...)):
     temp_path = f"temp_{file.filename}"
     with open(temp_path, "wb") as f:
         f.write(await file.read())
     
-    loader = PyPDFLoader(temp_path)
-    docs = loader.load()
+    # Load document based on type
+    docs = load_document(temp_path, file.filename)
     
-    for d in docs:
-        d.metadata["source"] = file.filename
-        # Truco: Añadimos el nombre del archivo al principio del texto para que el buscador vectorial
-        # pueda encontrar fragmentos cuando el usuario pregunte por el nombre del archivo (ej: "ast")
-        d.page_content = f"ARCHIVO: {file.filename}\n{d.page_content}"
-
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=150)
     splits = text_splitter.split_documents(docs)
     

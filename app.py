@@ -16,8 +16,8 @@ with st.sidebar:
         st.session_state.reset_counter = 0
     
     uploaded_files = st.file_uploader(
-        "Sube tus PDFs", 
-        type="pdf", 
+        "Sube tus documentos (PDF, DOCX, CSV, TXT, etc.)", 
+        type=["pdf", "docx", "csv", "txt", "md"], 
         accept_multiple_files=True,
         key=f"file_uploader_{st.session_state.reset_counter}"
     )
@@ -43,7 +43,7 @@ with st.sidebar:
         key="use_reasoning"
     )
 
-    st.caption("Los PDFs se indexan automáticamente al subirlos.")
+    st.caption("Los documentos se indexan automáticamente al subirlos.")
 
     # --- Lógica de Sincronización Automática ---
     current_files_names = {f.name for f in uploaded_files} if uploaded_files else set()
@@ -89,11 +89,6 @@ with st.sidebar:
         st.subheader(f"📄 Archivos Activos ({len(st.session_state.indexed_files)})")
         for idx_file in sorted(st.session_state.indexed_files):
             st.caption(f"✓ {idx_file}")
-    else:
-        # Asegurar que si el uploader está vacío, el estado también
-        if not uploaded_files and st.session_state.indexed_files:
-            requests.post(f"{API_URL}/reset")
-            st.session_state.indexed_files.clear()
 
 # --- CUERPO PRINCIPAL ---
 st.title("🚀 TelecoBrain Professional")
