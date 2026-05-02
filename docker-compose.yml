@@ -1,24 +1,37 @@
+# Configuración de los servicios para levantar la aplicación completa
 services:
+  # ==========================================
+  # SERVICIO 1: BACKEND (FastAPI + IA)
+  # ==========================================
   asistente-ia:
     build: .
     command: uvicorn main:app --host 0.0.0.0 --port 8000
     ports:
-      - "8000:8000"  
+      - "8000:8000"  # Expone el puerto de la API
     volumes:
-      - .:/app
-      - chroma_data:/app/db_data
+      - .:/app  # Hot-reloading: vincula el código local con el contenedor
+      - chroma_data:/app/db_data  # Persistencia de la base de datos vectorial
     extra_hosts:
+      # Permite al contenedor comunicarse con Ollama que corre en la máquina local (Host)
       - "host.docker.internal:host-gateway"
 
+  # ==========================================
+  # SERVICIO 2: FRONTEND (Streamlit)
+  # ==========================================
   interfaz:
     build: .
     command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0
     ports:
-      - "8501:8501"
+      - "8501:8501"  # Expone el puerto web de la UI
     depends_on:
-      - asistente-ia
+      - asistente-ia  # Espera a que la API se levante primero
     environment:
+      # URL interna por la que el Frontend se comunica con el Backend usando Docker DNS
       - API_URL=http://asistente-ia:8000
 
+# ==========================================
+# VOLÚMENES PERSISTENTES
+# ==========================================
 volumes:
+  # Volumen virtual de Docker para guardar los embeddings y no perderlos al apagar el contenedor
   chroma_data:

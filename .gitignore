@@ -1,4 +1,4 @@
-# Entornos virtuales (Crucial para evitar los 34.000 objetos)
+# Entornos virtuales 
 venv/
 .venv/
 env/
@@ -8,13 +8,12 @@ db_data/
 __pycache__/
 
 # --- RAG & AI Specific ---
-# Ignorar los índices de FAISS (se deben regenerar localmente)
 faiss_index/
 index.faiss
 index.pkl
 *.index
 
-# Ignorar los documentos que subas para probar (privacidad)
+# Ignorar los documentos que subas para probar 
 data/
 documents/
 uploads/

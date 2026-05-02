@@ -1,13 +1,23 @@
+"""
+Frontend de TelecoBrain Pro (Streamlit).
+Este módulo gestiona la interfaz de usuario, la subida de documentos,
+la sincronización con el backend (FastAPI) y la visualización de resultados.
+"""
 import os
 import streamlit as st
 import requests
 import matplotlib.pyplot as plt
 import numpy as np
 
+# ==========================================
+# CONFIGURACIÓN GLOBAL
+# ==========================================
 st.set_page_config(page_title="TelecoBrain Pro", layout="wide")
 API_URL = os.getenv("API_URL", "http://asistente-ia:8000")
 
-# --- SIDEBAR (Aquí está lo que te falta) ---
+# ==========================================
+# BARRA LATERAL (SIDEBAR)
+# ==========================================
 with st.sidebar:
     st.header("⚙️ Configuración")
     
@@ -45,10 +55,13 @@ with st.sidebar:
 
     st.caption("Los documentos se indexan automáticamente al subirlos.")
 
-    # --- Lógica de Sincronización Automática ---
+    # ==========================================
+    # LÓGICA DE SINCRONIZACIÓN AUTOMÁTICA
+    # ==========================================
+    # Compara los archivos subidos actualmente con los que el backend ya tiene indexados
     current_files_names = {f.name for f in uploaded_files} if uploaded_files else set()
     
-    # 1. Detectar archivos ELIMINADOS del uploader
+    # 1. Detectar archivos ELIMINADOS del uploader (están en indexados pero ya no en subidos)
     files_to_remove = st.session_state.indexed_files - current_files_names
     if files_to_remove:
         for file_name in files_to_remove:
@@ -59,7 +72,7 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"Error al eliminar {file_name}: {e}")
 
-    # 2. Detectar archivos NUEVOS en el uploader
+    # 2. Detectar archivos NUEVOS en el uploader (están en subidos pero aún no indexados)
     if uploaded_files:
         new_files = [f for f in uploaded_files if f.name not in st.session_state.indexed_files]
         if new_files:
@@ -74,7 +87,7 @@ with st.sidebar:
                     except Exception as e:
                         st.warning(f"⚠️ {uploaded_file.name}: {str(e)[:50]}")
     
-    # Botón de Limpieza Total (mantiene su utilidad para borrar historial)
+    # 3. Botón de Limpieza Total (Borra historial y base de datos vectorial)
     if st.button("🗑️ Limpiar Todo", use_container_width=True):
         requests.post(f"{API_URL}/reset")
         st.session_state.indexed_files.clear()
@@ -83,14 +96,16 @@ with st.sidebar:
         st.success("✅ Todo limpiado")
         st.rerun()
 
-    # Mostrar archivos indexados actualmente
+    # 4. Mostrar archivos indexados actualmente para feedback visual
     if st.session_state.indexed_files:
         st.divider()
         st.subheader(f"📄 Archivos Activos ({len(st.session_state.indexed_files)})")
         for idx_file in sorted(st.session_state.indexed_files):
             st.caption(f"✓ {idx_file}")
 
-# --- CUERPO PRINCIPAL ---
+# ==========================================
+# CUERPO PRINCIPAL (CHAT)
+# ==========================================
 st.title("🚀 TelecoBrain Professional")
 
 if "messages" not in st.session_state:
@@ -101,13 +116,16 @@ for m in st.session_state.messages:
     with st.chat_message(m["role"]):
         st.markdown(m["content"])
 
-# Chat Input
+# Input de usuario para el chat
 if query := st.chat_input("Pregunta algo sobre los documentos..."):
+    # Guardar y mostrar mensaje del usuario
     st.session_state.messages.append({"role": "user", "content": query})
     with st.chat_message("user"):
         st.markdown(query)
     
-    # Llamada al backend
+    # ==========================================
+    # COMUNICACIÓN CON EL BACKEND
+    # ==========================================
     try:
         payload = {
             "query": query,

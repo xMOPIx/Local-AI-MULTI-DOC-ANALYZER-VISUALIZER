@@ -1,34 +1,57 @@
-from fastapi import FastAPI
-from fastapi import UploadFile, File
+"""
+Backend de TelecoBrain Pro (FastAPI).
+Gestiona la ingesta de documentos, la base de datos vectorial Chroma, 
+la generación de respuestas usando Ollama (RAG) y la evaluación con Ragas.
+"""
+# ==========================================
+# 1. IMPORTACIONES
+# ==========================================
+from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
 import asyncio
-# --- IMPORTS DE RAGAS ---
-from ragas import evaluate
-from ragas.metrics import faithfulness, answer_relevancy
-from datasets import Dataset
-# ------------------------
+import os
+
+# --- Imports de Langchain ---
 from langchain_ollama import OllamaLLM, OllamaEmbeddings
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, CSVLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-import os
 
+# --- Imports de Evaluación (RAGAS) ---
+from ragas import evaluate
+from ragas.metrics import faithfulness, answer_relevancy
+from datasets import Dataset
+
+# ==========================================
+# 2. MODELOS DE DATOS (Pydantic)
+# ==========================================
 class ChatQuery(BaseModel):
     query: str
     use_ragas: bool = False
     use_reasoning: bool = False
 
-app = FastAPI()
+# ==========================================
+# 3. CONFIGURACIÓN GLOBAL E INICIALIZACIÓN
+# ==========================================
+app = FastAPI(title="TelecoBrain API")
 CHROMA_PATH = "db_data"
 base_url = "http://host.docker.internal:11434"
 ENABLE_RAGAS_EVAL = os.getenv("ENABLE_RAGAS_EVAL", "false").lower() in ("1", "true", "yes")
 
+# Inicialización de Langchain y Chroma
 embeddings_engine = OllamaEmbeddings(model="nomic-embed-text", base_url=base_url)
 llm = OllamaLLM(model="llama3.1", temperature=0, base_url=base_url)
 vector_db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings_engine)
 
+# ==========================================
+# 4. FUNCIONES AUXILIARES
+# ==========================================
 def load_document(file_path: str, filename: str):
-    """Load document based on file extension."""
+    """
+    Carga un documento seleccionando el cargador (Loader) adecuado según la extensión.
+    Soporta PDF, DOCX, CSV y texto plano.
+    Añade metadatos del archivo a cada fragmento.
+    """
     ext = filename.lower().split('.')[-1]
     
     if ext == 'pdf':
@@ -45,17 +68,21 @@ def load_document(file_path: str, filename: str):
     
     docs = loader.load()
     
-    # Add metadata
+    # Añadir nombre de archivo al contenido para ayudar al LLM
     for d in docs:
         d.metadata["source"] = filename
         d.page_content = f"ARCHIVO: {filename}\n{d.page_content}"
     
     return docs
 
+# ==========================================
+# 5. ENDPOINTS DE GESTIÓN DE ARCHIVOS
+# ==========================================
 @app.post("/reset")
 async def reset_db():
+    """Limpia la base de datos vectorial eliminando todos los documentos."""
     global vector_db
-    # Eliminar todos los documentos de la colección actual
+    # Extraer y eliminar todos los IDs
     ids = vector_db.get()["ids"]
     if ids:
         vector_db.delete(ids=ids)
@@ -63,7 +90,7 @@ async def reset_db():
 
 @app.delete("/delete/{filename}")
 async def delete_file(filename: str):
-    # Eliminar fragmentos que pertenezcan al archivo específico
+    """Elimina únicamente los fragmentos asociados a un archivo específico."""
     try:
         result = vector_db.get(where={"source": filename})
         if result and result.get("ids"):
@@ -74,17 +101,22 @@ async def delete_file(filename: str):
     
 @app.post("/ingest")
 async def ingest_file(file: UploadFile = File(...)):
+    """
+    Recibe un archivo, lo guarda temporalmente, extrae el texto, 
+    lo divide en fragmentos (chunks) y lo guarda en ChromaDB.
+    """
     temp_path = f"temp_{file.filename}"
     with open(temp_path, "wb") as f:
         f.write(await file.read())
     
-    # Load document based on type
+    # 1. Cargar documento según extensión
     docs = load_document(temp_path, file.filename)
     
+    # 2. Dividir texto en fragmentos solapados
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=150)
     splits = text_splitter.split_documents(docs)
     
-    # Guardar en Chroma
+    # 3. Guardar fragmentos en la BD Vectorial
     if hasattr(vector_db, "add_documents"):
         vector_db.add_documents(splits)
         if hasattr(vector_db, "persist"):
@@ -96,12 +128,23 @@ async def ingest_file(file: UploadFile = File(...)):
             persist_directory=CHROMA_PATH
         )
     
+    # Limpieza
     os.remove(temp_path)
     return {"status": "success", "filename": file.filename}
 
+# ==========================================
+# 6. ENDPOINT PRINCIPAL (CHAT & RAG)
+# ==========================================
 @app.post("/ask")
 async def ask_ai(chat_query: ChatQuery):
-    # 1. Búsqueda en la base de datos (uso de MMR para garantizar diversidad de documentos)
+    """
+    Ejecuta el flujo completo de RAG:
+    1. Búsqueda semántica (MMR) en Chroma.
+    2. Construcción del Prompt (con o sin CoT).
+    3. Generación de respuesta con LLM.
+    4. Opcional: Evaluación de fidelidad y relevancia con Ragas.
+    """
+    # 1. Recuperación de Documentos (MMR garantiza diversidad)
     # k=10 para asegurar que cogemos suficientes fragmentos tras añadir el nombre del archivo
     if hasattr(vector_db, "max_marginal_relevance_search"):
         docs = vector_db.max_marginal_relevance_search(chat_query.query, k=10, fetch_k=35)
